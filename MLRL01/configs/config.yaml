@@ -1,0 +1,65 @@
+# ══════════════════════════════════════════════════════════════
+#  MLRL01 - Monster Mode Production Configuration
+#  Gold Futures (GC=F) - Recurrent LSTM Strategy
+# ══════════════════════════════════════════════════════════════
+
+seed: 42
+symbol: "GC=F"
+
+data:
+  data_dir: "jupiter"
+  train_years: 3
+  test_years: 1
+  window_size: 30
+
+features:
+  ema_spans: [20, 50]
+  atr_period: 14
+  vol_window: 20
+  robust_scaler_window: 100
+
+env:
+  initial_capital: 100000
+  min_hold_period: 5
+  # Friction: fee (0.01%) + spread (0.03%) + slippage (0.02%)
+  fee_rate: 0.0001
+  spread_cost: 0.0003
+  slippage: 0.0002
+  
+  # Reward Weights (λ)
+  lambda_vol: 0.1
+  lambda_dd: 0.5
+  holding_incentive: 0.0002
+
+rl:
+  algorithm: "RecurrentPPO"
+  policy: "MlpLstmPolicy"
+  timesteps: 10000
+  learning_rate: 0.0003
+  batch_size: 16
+  n_steps: 2048
+  gae_lambda: 0.95
+  gamma: 0.99
+  
+  # Network
+  lstm_hidden_size: 64
+  net_arch:
+    pi: [64, 32]
+    vf: [64, 32]
+
+# Index -> Weight
+# 0: 0.0  (Flat)
+# 1: 0.5  (Long 50%)
+# 2: 1.0  (Long 100%)
+# 3: -0.5 (Short 50%)
+# 4: -1.0 (Short 100%)
+
+regimes:
+  vol_percentile_stress: 0.8
+  trend_strength_threshold: 1.0
+  ma_slope_bullish: 0.001
+  ma_slope_crisis: -0.005
+
+output:
+  results_dir: "results/wf_v3"
+  models_dir: "models/saved_models"
