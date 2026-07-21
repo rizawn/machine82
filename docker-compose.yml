@@ -1,0 +1,116 @@
+version: "3.8"
+
+services:
+  # === Frontend ===
+  # Moved out of Docker to Windows Host for 10x faster hot reload (HMR)
+  # frontend:
+  #   build:
+  #     context: ./mlrl03
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+  #     - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+  #   depends_on:
+  #     - api-gateway
+
+  # === API Gateway ===
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./api_gateway/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/trinity
+      - REDIS_URL=redis://redis:6379/0
+      - MLRL01_PATH=/app/MLRL01
+      - MLRL02_PATH=/app/MLRL02
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ./MLRL01:/app/MLRL01
+      - ./MLRL02:/app/MLRL02
+      - model-artifacts:/app/results
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # === Worker Muscle (MLRL01) ===
+  worker-muscle:
+    build:
+      context: .
+      dockerfile: ./api_gateway/Dockerfile
+    command: celery -A workers.celery_app worker -Q muscle -c 1 --loglevel=info -Ofair
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/trinity
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./MLRL01:/app/MLRL01
+      - model-artifacts:/app/results
+    depends_on:
+      - postgres
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # === Worker Brain (MLRL02) ===
+  worker-brain:
+    build:
+      context: .
+      dockerfile: ./api_gateway/Dockerfile
+    command: celery -A workers.celery_app worker -Q brain -c 1 --loglevel=info -Ofair
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/trinity
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ./MLRL02:/app/MLRL02
+      - model-artifacts:/app/results
+    depends_on:
+      - postgres
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # === Database ===
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=trinity
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=pass
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "work_mem=16MB", "-c", "max_connections=50"]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+  # === Message Broker ===
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # === Local LLM Server ===
+  # Moved out of Docker to Windows Host for native GPU support (RTX 5060)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama-models:/root/.ollama
+
+volumes:
+  pg-data:
+  model-artifacts:
+  # ollama-models:
